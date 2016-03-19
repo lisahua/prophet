@@ -1,0 +1,2 @@
+/home/ubuntu/Workspace/prophet/crawler/__tmp/src2/libtiff
+-DHAVE_CONFIG_H -I. -I/home/ubuntu/Workspace/prophet/crawler/../build/benchmarks/libtiff-deps/jpeg-9a-build/include -g -O2 -Wall -W -c -o tif_packbits.lo 

@@ -1,0 +1,2 @@
+/home/ubuntu/Workspace/prophet/crawler/__tmp/src1/tools
+-DHAVE_CONFIG_H -I. -I../libtiff -I../libtiff -I/home/ubuntu/Workspace/prophet/crawler/../build/benchmarks/libtiff-deps/jpeg-9a-build/include -g -O2 -Wall -W -c -o ppm2tiff.o 
