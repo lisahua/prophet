@@ -1,0 +1,2 @@
+.
+-std=c90 -DLINUX -D_REENTRANT -D_GNU_SOURCE -g -O2 -g -O2 -pthread -I./subversion/include -I./subversion -I/home/ubuntu/Workspace/prophet/build/benchmarks/apache-deps/apr-build/include/apr-1 -I/home/ubuntu/Workspace/prophet/build/benchmarks/apache-deps/apr-util-build/include/apr-1 -o subversion/libsvn_repos/log.lo -c 
