@@ -1,0 +1,2 @@
+.
+-DLINUX -D_REENTRANT -D_GNU_SOURCE -g -O2 -g -O2 -pthread -Werror=implicit-function-declaration -I./subversion/include -I./subversion -I/home/ubuntu/Workspace/prophet/build/benchmarks/apache-deps/apr-build/include/apr-1 -I/home/ubuntu/Workspace/prophet/build/benchmarks/apache-deps/apr-util-build/include/apr-1 -o subversion/libsvn_fs_fs/dag.lo -c 
