@@ -1,0 +1,2 @@
+/home/ubuntu/Workspace/prophet/crawler/__tmp/src1/src
+-DHAVE_CONFIG_H -I../include/curl -I../include -I../include -I../lib -I../src -I../lib -I../src -O2 -Wno-system-headers -MT curl-tool_binmode.o -MD -MP -MF .deps/curl-tool_binmode.Tpo -c -o curl-tool_binmode.o 

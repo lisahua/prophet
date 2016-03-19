@@ -1,0 +1,2 @@
+/home/ubuntu/Workspace/prophet/crawler/__tmp/src1/lib
+-DHAVE_CONFIG_H -I../include/curl -I../include -I../include -I../lib -I../lib -DBUILDING_LIBCURL -DCURL_HIDDEN_SYMBOLS -fvisibility=hidden -O2 -Wno-system-headers -MT vtls/libcurl_la-gtls.lo -MD -MP -MF vtls/.deps/libcurl_la-gtls.Tpo -c -o vtls/libcurl_la-gtls.lo 
