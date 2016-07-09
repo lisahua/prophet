@@ -1,6 +1,5 @@
 #include "config.h"
 #include "Utils.h"
-#include "sys/time.h"
 #include "RepairCandidateGenerator.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -185,24 +184,6 @@ std::set<std::string> splitStringWithWhite(const std::string &str) {
 static size_t verbose_level = 1;
 static size_t log_level = 10;
 static FILE* log_f = NULL;
-
-static struct timeval start_timeval;
-
-void reset_timer() {
-    struct timezone tz;
-    memset(&tz, 0, sizeof(struct timezone));
-    int ret = gettimeofday(&start_timeval, &tz);
-    assert( ret == 0);
-}
-
-unsigned long long get_timer() {
-    struct timezone tz;
-    memset(&tz, 0, sizeof(struct timezone));
-    struct timeval cur_timeval;
-    int ret = gettimeofday(&cur_timeval, &tz);
-    assert( ret == 0);
-    return cur_timeval.tv_sec - start_timeval.tv_sec;
-}
 
 void outlog_open(const char* filename, size_t v_level, size_t l_level) {
     assert(log_f == NULL && "outlog_open() called multiple times!");

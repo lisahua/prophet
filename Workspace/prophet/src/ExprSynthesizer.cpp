@@ -21,21 +21,13 @@ using namespace clang;
 #define ISNEG_RECORDFILE "/tmp/neg.log"
 
 #define BATCH_CAP 10
-#define SYNC_CAP 200
+#define SYNC_CAP 500
 #define SYNC_TIME_CAP 600
 
-llvm::cl::opt<bool> CondExt("cond-ext", llvm::cl::init(false),
-                            llvm::cl::desc("Enable condition extension"));
 // XXX: OK, this is really shitty code for statistics
 llvm::cl::opt<std::string> DumpPassedCandidate("dump-passed-candidate", llvm::cl::init(""),
         llvm::cl::desc("Dump the passed candidate, in order to collect experiments data!"));
 size_t pass_global_cnt = 0;
-
-unsigned long tot_synthesis_run = 0;
-unsigned long tot_concrete_conds = 0;
-unsigned long tot_explored_templates = 0;
-
-static unsigned long long the_timeout_limit = 0;
 
 void dumpCandidate(SourceContextManager &M, const RepairCandidate &rc, Expr* v, double score) {
     std::ostringstream sout;
@@ -512,7 +504,7 @@ public:
 
     virtual bool test(const BenchProgram::EnvMapTy &env, unsigned long id) {
         {
-            outlog_printf(2, "[%llu] BasicTester, Testing instance id %lu:\n", get_timer(), id);
+            outlog_printf(2, "BasicTester, Testing instance id %lu:\n", id);
             out_codes(codes[id], patches[id]);
         }
         outlog_printf(3, "Testing negative cases!\n");
@@ -524,7 +516,7 @@ public:
         outlog_printf(3, "Testing positive cases!\n");
         bool ret = testPositiveCases(env);
         if (ret)
-            outlog_printf(2, "[%llu] Passed!\n", get_timer());
+            outlog_printf(2, "Passed!\n");
         else {
             // We are going to clear out stuff tested, to avoid memory usage.
             codes[id].clear();
@@ -760,7 +752,7 @@ public:
 
     virtual bool test(const BenchProgram::EnvMapTy &env, unsigned long id) {
         {
-            outlog_printf(2, "[%llu] StringConstTester, Testing instance id %lu:\n", get_timer(), id);
+            outlog_printf(2, "StringConstTester, Testing instance id %lu:\n", id);
             out_codes(codes[id], patches[id]);
         }
         outlog_printf(3, "Testing negative cases!\n");
@@ -836,12 +828,12 @@ public:
             assert(0);
         }
         return ret;*/
-        outlog_printf(2, "[%llu] May pass, will check when postprocessing, with:\n%s\n", get_timer(), candidate_strs[id].begin()->c_str());
+        outlog_printf(2, "May pass, will check when postprocessing, with:\n%s\n", candidate_strs[id].begin()->c_str());
         return true;
     }
 
     virtual std::map<NewCodeMapTy, double> getResults(unsigned long id) {
-        outlog_printf(2, "[%llu] StringConstTester postprocessing! \n", get_timer());
+        outlog_printf(2, "StringConstTester postprocessing! \n");
         RepairCandidate candidate = candidates[id];
         unsigned long mutate_id = getMutateId(candidate);
         assert( candidate_strs[id].size() == 1);
@@ -874,7 +866,7 @@ public:
         double score = computeFinalScore(learning, M, candidates[id], id, NULL);
         if (found_score < score) {
             found_score = score;
-            outlog_printf(2, "[%llu] Update best score %lf\n", get_timer(), found_score);
+            outlog_printf(2, "Update best score %lf\n", found_score);
         }
 
         if (DumpPassedCandidate.getValue() != "")
@@ -900,29 +892,8 @@ long checkV(const std::map<unsigned long, std::vector< std::vector< long long> >
         assert( cit != caseVMap.end());
         for (size_t i = 0; i < cit->second.size(); i++) {
             assert(cit->second[i][idx] != MAGIC_NUMBER && "sanity check!");
-            int flag_mask = flag & 3;
-            int flag_bit = flag & 4;
-            long long rv = v;
-            if (flag_bit != 0)
-                rv = cit->second[i][v];
-            bool cond;
-            switch (flag_mask) {
-                case 0:
-                    cond = (cit->second[i][idx] != rv);
-                    break;
-                case 1:
-                    cond = (cit->second[i][idx] == rv);
-                    break;
-                case 2:
-                    cond = (cit->second[i][idx] < rv);
-                    break;
-                case 3:
-                    cond = (cit->second[i][idx] > rv);
-                    break;
-                default:
-                    break;
-            }
-            if (cond) {
+            if (((flag == 0) && (cit->second[i][idx] != v)) ||
+                ((flag == 1) && (cit->second[i][idx] == v))) {
                 ret += 2;
                 break;
             }
@@ -944,31 +915,8 @@ long checkV(const std::map<unsigned long, std::vector< std::vector< long long> >
         }
         for (size_t i = 0; i < cit->second.size(); i++) {
             assert(cit->second[i][idx] != MAGIC_NUMBER && "sanity check!");
-
-            int flag_mask = flag & 3;
-            int flag_bit = flag & 4;
-            long long rv = v;
-            if (flag_bit != 0) {
-                rv = cit->second[i][v];
-            }
-            bool cond;
-            switch (flag_mask) {
-                case 0:
-                    cond = (cit->second[i][idx] != rv);
-                    break;
-                case 1:
-                    cond = (cit->second[i][idx] == rv);
-                    break;
-                case 2:
-                    cond = (cit->second[i][idx] < rv);
-                    break;
-                case 3:
-                    cond = (cit->second[i][idx] > rv);
-                    break;
-                default:
-                    break;
-            }
-
+            bool cond = ((flag == 0) && (cit->second[i][idx] != v)) ||
+                    ((flag == 1) && (cit->second[i][idx] == v));
             if (cond)
                 valid = true;
             if ((nit->second[i] == 0) && (cond)) {
@@ -1005,16 +953,6 @@ struct SynResTy {
             return v < a.v;
     }
 };
-
-static int compareTypeCheck(Expr* E1, Expr* E2) {
-    QualType T1 = E1->getType();
-    QualType T2 = E2->getType();
-    if (T1->isIntegerType() == T2->isIntegerType())
-        return 0;
-    if (T1->isPointerType() == T2->isPointerType())
-        return 1;
-    return -1;
-}
 
 std::vector<Expr*> synthesizeResult(ExprListTy exprs,
         const std::map<unsigned long, std::vector<unsigned long> > &negative_records,
@@ -1053,55 +991,16 @@ std::vector<Expr*> synthesizeResult(ExprListTy exprs,
         }
         if (give_up) continue;
         for (std::set<long long>::iterator it = vals.begin(); it != vals.end(); it++) {
-            size_t flag_e = 2;
-            if (CondExt.getValue())
-                if (exprs[vid]->getType()->isIntegerType())
-                    flag_e = 4;
-            for (size_t flag_v = 0; flag_v < flag_e; flag_v ++) {
-                long long the_v = *it;
-                if (flag_v == 2)
-                    the_v ++;
-                else if (flag_v == 3)
-                    the_v --;
-                long vio = checkV(caseVMap, negative_cases, positive_cases,
-                        negative_records, vid, the_v, flag_v);
-                if (vio >= 0)
-                    res.push_back(std::make_pair((size_t)vio, SynResTy(vid, the_v, flag_v)));
-            }
-        }
-        if (CondExt.getValue()) {
-            for (size_t vid2 = 0; vid2 < exprs.size(); vid2 ++) {
-                int checkType = compareTypeCheck(exprs[vid], exprs[vid2]);
-                if (checkType == -1)
-                    continue;
-                bool give_up = false;
-                for (std::map<unsigned long, std::vector< std::vector< long long> > >::const_iterator
-                    it = caseVMap.begin(); it != caseVMap.end(); ++it) {
-                    for (size_t i = 0; i < it->second.size(); i++) {
-                        if (it->second[i][vid2] == MAGIC_NUMBER) {
-                            give_up = true;
-                            break;
-                        }
-                    }
-                    if (give_up) break;
-                }
-                if (give_up)
-                    continue;
-                size_t flag_e = 8;
-                if (checkType == 1)
-                    flag_e = 6;
-                for (size_t flag_v = 4; flag_v < flag_e; flag_v ++) {
-                    long vio = checkV(caseVMap, negative_cases, positive_cases,
-                            negative_records, vid, vid2, flag_v);
-                    if (vio >= 0)
-                        res.push_back(std::make_pair((size_t)vio, SynResTy(vid, vid2, flag_v)));
-                }
-            }
+            long vio = checkV(caseVMap, negative_cases, positive_cases,
+                    negative_records, vid, *it, 0);
+            if (vio >= 0)
+                res.push_back(std::make_pair((size_t)vio, SynResTy(vid, *it, 0)));
+            vio = checkV(caseVMap, negative_cases, positive_cases,
+                    negative_records, vid, *it, 1);
+            if (vio >= 0)
+                res.push_back(std::make_pair((size_t)vio, SynResTy(vid, *it, 1)));
         }
     }
-
-    tot_synthesis_run ++;
-    tot_concrete_conds += res.size() + 1;
 
     std::sort(res.begin(), res.end());
     std::vector<Expr*> ret;
@@ -1112,37 +1011,18 @@ std::vector<Expr*> synthesizeResult(ExprListTy exprs,
         {
             SynResTy &tmp = res[i].second;
             Expr *E;
-            Expr *RHS;
-            int flag_mask = (tmp.flag & 3);
-            int flag_bit = (tmp.flag & 4);
-            if (flag_bit == 0)
-                RHS = getNewIntegerLiteral(ctxt, tmp.v);
-            else
-                RHS = exprs[tmp.v];
-            BinaryOperatorKind bkind;
-            switch (flag_mask) {
-                case 0:
-                    bkind = BO_NE;
-                    break;
-                case 1:
-                    bkind = BO_EQ;
-                    break;
-                case 2:
-                    bkind = BO_LE;
-                    break;
-                case 3:
-                    bkind = BO_GT;
-                    break;
-                default:
-                    assert(0);
+            if (tmp.flag == 2)
+                E = getNewIntegerLiteral(ctxt, 1);
+            else if (tmp.flag == 1)
+                E = new(*ctxt) BinaryOperator(
+                    exprs[tmp.idx], getNewIntegerLiteral(ctxt, tmp.v), BO_EQ, ctxt->IntTy, VK_RValue,
+                    OK_Ordinary, SourceLocation(), false);
+            else {
+                E = new(*ctxt) BinaryOperator(
+                    exprs[tmp.idx], getNewIntegerLiteral(ctxt, tmp.v), BO_NE, ctxt->IntTy, VK_RValue,
+                    OK_Ordinary, SourceLocation(), false);
             }
-            E = new(*ctxt) BinaryOperator(
-                exprs[tmp.idx], RHS, bkind, ctxt->IntTy, VK_RValue,
-                OK_Ordinary, SourceLocation(), false);
-            if (bkind == BO_EQ)
-                ret.push_back(getParenExpr(ctxt, E));
-            else
-                ret.push_back(E);
+            ret.push_back(E);
         }
         else
             break;
@@ -1174,55 +1054,16 @@ std::vector<Expr*> synthesizeResultSPR(ExprListTy exprs,
         }
         if (give_up) continue;
         for (std::set<long long>::iterator it = vals.begin(); it != vals.end(); it++) {
-            size_t flag_e = 2;
-            if (CondExt.getValue())
-                if (exprs[vid]->getType()->isIntegerType())
-                    flag_e = 4;
-            for (size_t flag_v = 0; flag_v < flag_e; flag_v ++) {
-                long long the_v = *it;
-                if (flag_v == 2)
-                    the_v ++;
-                else if (flag_v == 3)
-                    the_v --;
-                long vio = checkV(caseVMap, negative_cases, positive_cases,
-                        negative_records, vid, the_v, flag_v);
-                if (vio >= 0)
-                    res.push_back(std::make_pair((size_t)vio, SynResTy(vid, the_v, flag_v)));
-            }
-        }
-        if (CondExt.getValue()) {
-            for (size_t vid2 = 0; vid2 < exprs.size(); vid2 ++) {
-                int checkType = compareTypeCheck(exprs[vid], exprs[vid2]);
-                if (checkType == -1)
-                    continue;
-                bool give_up = false;
-                for (std::map<unsigned long, std::vector< std::vector< long long> > >::const_iterator
-                    it = caseVMap.begin(); it != caseVMap.end(); ++it) {
-                    for (size_t i = 0; i < it->second.size(); i++) {
-                        if (it->second[i][vid2] == MAGIC_NUMBER) {
-                            give_up = true;
-                            break;
-                        }
-                    }
-                    if (give_up) break;
-                }
-                if (give_up)
-                    continue;
-                size_t flag_e = 8;
-                if (checkType == 1)
-                    flag_e = 6;
-                for (size_t flag_v = 4; flag_v < flag_e; flag_v ++) {
-                    long vio = checkV(caseVMap, negative_cases, positive_cases,
-                            negative_records, vid, vid2, flag_v);
-                    if (vio >= 0)
-                        res.push_back(std::make_pair((size_t)vio, SynResTy(vid, vid2, flag_v)));
-                }
-            }
+            long vio = checkV(caseVMap, negative_cases, positive_cases,
+                    negative_records, vid, *it, 0);
+            if (vio >= 0)
+                res.push_back(std::make_pair((size_t)vio, SynResTy(vid, *it, 0)));
+            vio = checkV(caseVMap, negative_cases, positive_cases,
+                    negative_records, vid, *it, 1);
+            if (vio >= 0)
+                res.push_back(std::make_pair((size_t)vio, SynResTy(vid, *it, 1)));
         }
     }
-
-    tot_synthesis_run ++;
-    tot_concrete_conds += res.size() + 1;
 
     std::sort(res.begin(), res.end());
     std::vector<Expr*> ret;
@@ -1233,34 +1074,18 @@ std::vector<Expr*> synthesizeResultSPR(ExprListTy exprs,
         {
             SynResTy &tmp = res[i].second;
             Expr *E;
-            if (tmp.v == 0 && (tmp.flag == 0 || tmp.flag == 1)) {
-                Expr *RHS;
-                int flag_mask = tmp.flag & 3;
-                int flag_bit = tmp.flag & 4;
-                if (flag_bit == 0)
-                    RHS = getNewIntegerLiteral(ctxt, tmp.v);
-                else
-                    RHS = exprs[tmp.v];
-                BinaryOperatorKind bkind;
-                switch (flag_mask) {
-                    case 0:
-                        bkind = BO_NE;
-                        break;
-                    case 1:
-                        bkind = BO_EQ;
-                        break;
-                    case 2:
-                        bkind = BO_LE;
-                        break;
-                    case 3:
-                        bkind = BO_GT;
-                        break;
-                    default:
-                        assert(0);
+            if (tmp.v == 0) {
+                if (tmp.flag == 2)
+                    E = getNewIntegerLiteral(ctxt, 1);
+                else if (tmp.flag == 1)
+                    E = new(*ctxt) BinaryOperator(
+                        exprs[tmp.idx], getNewIntegerLiteral(ctxt, tmp.v), BO_EQ, ctxt->IntTy, VK_RValue,
+                        OK_Ordinary, SourceLocation(), false);
+                else {
+                    E = new(*ctxt) BinaryOperator(
+                        exprs[tmp.idx], getNewIntegerLiteral(ctxt, tmp.v), BO_NE, ctxt->IntTy, VK_RValue,
+                        OK_Ordinary, SourceLocation(), false);
                 }
-                E = new(*ctxt) BinaryOperator(
-                    exprs[tmp.idx], RHS, bkind, ctxt->IntTy, VK_RValue,
-                    OK_Ordinary, SourceLocation(), false);
                 ret.push_back(E);
             }
         }
@@ -1271,34 +1096,18 @@ std::vector<Expr*> synthesizeResultSPR(ExprListTy exprs,
         {
             SynResTy &tmp = res[i].second;
             Expr *E;
-            if (tmp.v != 0 || (tmp.flag != 0 && tmp.flag != 1)) {
-                Expr *RHS;
-                int flag_mask = tmp.flag & 3;
-                int flag_bit = tmp.flag & 4;
-                if (flag_bit == 0)
-                    RHS = getNewIntegerLiteral(ctxt, tmp.v);
-                else
-                    RHS = exprs[tmp.v];
-                BinaryOperatorKind bkind;
-                switch (flag_mask) {
-                    case 0:
-                        bkind = BO_NE;
-                        break;
-                    case 1:
-                        bkind = BO_EQ;
-                        break;
-                    case 2:
-                        bkind = BO_LE;
-                        break;
-                    case 3:
-                        bkind = BO_GT;
-                        break;
-                    default:
-                        assert(0);
+            if (tmp.v != 0) {
+                if (tmp.flag == 2)
+                    E = getNewIntegerLiteral(ctxt, 1);
+                else if (tmp.flag == 1)
+                    E = new(*ctxt) BinaryOperator(
+                        exprs[tmp.idx], getNewIntegerLiteral(ctxt, tmp.v), BO_EQ, ctxt->IntTy, VK_RValue,
+                        OK_Ordinary, SourceLocation(), false);
+                else {
+                    E = new(*ctxt) BinaryOperator(
+                        exprs[tmp.idx], getNewIntegerLiteral(ctxt, tmp.v), BO_NE, ctxt->IntTy, VK_RValue,
+                        OK_Ordinary, SourceLocation(), false);
                 }
-                E = new(*ctxt) BinaryOperator(
-                    exprs[tmp.idx], RHS, bkind, ctxt->IntTy, VK_RValue,
-                    OK_Ordinary, SourceLocation(), false);
                 ret.push_back(E);
             }
         }
@@ -1313,7 +1122,6 @@ bool isZeroConstantExpr(Expr *E) {
     BinaryOperator *BO = llvm::dyn_cast<BinaryOperator>(E);
     if (!BO) return false;
     IntegerLiteral *IL = llvm::dyn_cast<IntegerLiteral>(BO->getRHS());
-    if (!IL) return false;
     return (IL->getValue() == 0);
 }
 
@@ -1664,7 +1472,7 @@ public:
 
     virtual bool test(const BenchProgram::EnvMapTy &env, unsigned long id) {
         {
-            outlog_printf(2, "[%llu] CondTester, Testing instance id %lu:\n", get_timer(), id);
+            outlog_printf(2, "CondTester, Testing instance id %lu:\n", id);
             out_codes(codes[id], patches[id]);
         }
         // We first need to find the flip combination that will make it passes each
@@ -1693,7 +1501,7 @@ public:
         }
         valueRecords[id] = caseVMap;
         branchRecords[id] = negative_records;
-        outlog_printf(2, "[%llu] Passed!\n", get_timer());
+        outlog_printf(2, "Passed!\n");
         return true;
     }
 
@@ -1731,21 +1539,16 @@ public:
         helper.clear();
         int passed_cnt = 0;
         for (size_t i = 0; i < candidateExprs.size(); i++) {
-            if (the_timeout_limit != 0)
-                if (get_timer() > the_timeout_limit) {
-                    outlog_printf(1, "[%llu] Timeout! Limit is %llu\n", get_timer(), the_timeout_limit);
-                    break;
-                }
             Expr* new_expr = candidateExprs[i];
             ExprFillInfo cur_info = infos[id];
             cur_info[condition_idx] = new_expr;
             double score = computeFinalScore(learning, M, candidate, id, new_expr);
             if (learning) {
-                if (!isZeroConstantExpr(stripParenAndCast(new_expr)) && (stmtToString(*ast, new_expr).find("len") != std::string::npos))
+                if (!isZeroConstantExpr(new_expr) && (stmtToString(*ast, new_expr).find("len") != std::string::npos))
                     score -= 0.7;
                 if (passed_constant) {
                     bool found_it = false;
-                    std::string stmtStr = stmtToString(*ast, stripParenAndCast(new_expr));
+                    std::string stmtStr = stmtToString(*ast, new_expr);
                     for (std::set<std::string>::iterator it = helper.begin(); it != helper.end(); it++)
                         if (stmtStr.find(*it) == 0) {
                             size_t idx = it->size();
@@ -1798,7 +1601,7 @@ public:
                 outlog_printf(3, "Not passed!\n");
                 continue;
             }
-            outlog_printf(2, "[%llu] Passed!\n", get_timer());
+            outlog_printf(2, "Passed!\n");
             passed_cnt ++;
             if (full_synthesis && !learning)
                 // OK, i don't want to explain this. It is just a hacky fix to make the experiment checking
@@ -1874,7 +1677,7 @@ public:
                     outlog_printf(3, "Trying Positive cases!\n");
                     passed = P.testSet("src", positive_cases, std::map<std::string, std::string>());
                     if (passed == positive_cases) {
-                        outlog_printf(2, "[%llu] Passed!\n", get_timer());
+                        outlog_printf(2, "Passed!\n");
                         if (DumpPassedCandidate.getValue() != "")
                             dumpCandidate(M, candidate, NULL, score);
                         valueRecords.erase(id);
@@ -1938,11 +1741,6 @@ class TestBatcher {
     }
 
     void doTest(const CodeSegTy &codeSegs) {
-        if (the_timeout_limit != 0)
-            if (get_timer() > the_timeout_limit) {
-                outlog_printf(1, "[%llu] Timeout! Limit is %llu\n", get_timer(), the_timeout_limit);
-                return;
-            }
         outlog_printf(2, "a batched test job starts!\n");
         // We are going to build a single batched code for this,
         // this saves a lot of compile time for testing!
@@ -1953,8 +1751,6 @@ class TestBatcher {
         for (size_t i = 0; i < tmp.size(); i++) {
             BasicTester *T = tmp[i].T;
             tmp_patches.push_back(T->getPatches(tmp[i].id));
-            tot_explored_templates += tmp[i].rc.getCandidateAtoms().size();
-            outlog_printf(0, "The number of explored templates: %lu\n", tot_explored_templates);
         }
         std::map<std::string, std::string> codes = mergeCode(codeSegs, tmp_patches);
         {
@@ -2049,8 +1845,6 @@ public:
                     doTest(codeSegs);
             }
             else {
-                tot_explored_templates += candidate.getCandidateAtoms().size();
-                outlog_printf(0, "The number of explored templates: %lu\n", tot_explored_templates);
                 std::map<NewCodeMapTy, double> code_set = singleTest(codeSegs, patches, T, ids[i]);
                 for (std::map<NewCodeMapTy, double>::iterator it = code_set.begin();
                         it != code_set.end(); it++) {
@@ -2107,7 +1901,6 @@ public:
 
 bool ExprSynthesizer::workUntil(size_t candidate_limit, size_t time_limit,
         ExprSynthesizerResultTy &res, bool full_synthesis, bool quit_with_any) {
-    the_timeout_limit = this->timeout_limit;
     TestBatcher TB(P, naive, learning, FP);
     std::vector<BasicTester*> testers;
     testers.clear();
@@ -2130,11 +1923,6 @@ bool ExprSynthesizer::workUntil(size_t candidate_limit, size_t time_limit,
     found_score = -1e20;
     // FIXME: we ignore time limit now, we will add back later
     while (q.size() > 0 && ((tested_cnt < candidate_limit) || (candidate_limit == 0))) {
-        if (timeout_limit != 0)
-            if (get_timer() > timeout_limit) {
-                outlog_printf(1, "[%llu] Timeout! Limit is %llu\n", get_timer(), timeout_limit);
-                break;
-            }
         cnt ++;
         time_t now_t = Timer.getSeconds();
         if ((cnt % SYNC_CAP == 0) || (now_t - last_sync > SYNC_TIME_CAP)) {
@@ -2212,8 +2000,6 @@ bool ExprSynthesizer::workUntil(size_t candidate_limit, size_t time_limit,
     }
     if (generate_min_id != 100000000)
         outlog_printf(1, "The first schema id that generates patch: %lu\n", generate_min_id);
-    outlog_printf(0, "The total number of synthesis runs: %lu\n", tot_synthesis_run);
-    outlog_printf(0, "The total number of concrete conds: %lu\n", tot_concrete_conds);
     //res.clear();
     for (size_t i = 0; i < collected_res.size(); i++)
         for (size_t j = i; j < collected_res.size(); j++)

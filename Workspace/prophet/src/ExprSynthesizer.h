@@ -22,13 +22,11 @@ class ExprSynthesizer {
     bool naive;
     bool learning;
     FeatureParameter *FP;
-    unsigned long long timeout_limit;
 public:
     ExprSynthesizer(BenchProgram &P, SourceContextManager &M,
             RepairCandidateQueue &q,
             bool naive, bool learning, FeatureParameter *FP):
-        P(P), M(M), tested_cnt(0), q(q), naive(naive), learning(learning && !naive), FP(FP),
-        timeout_limit(0) { }
+        P(P), M(M), tested_cnt(0), q(q), naive(naive), learning(learning && !naive), FP(FP) { }
 
     bool workUntil(size_t candidate_limit,
             size_t time_limit, ExprSynthesizerResultTy &res,
@@ -36,9 +34,5 @@ public:
 
     size_t getTestedCandidateNumber() {
         return tested_cnt;
-    }
-
-    void setTimeoutLimit(unsigned long long limit) {
-        timeout_limit = limit;
     }
 };

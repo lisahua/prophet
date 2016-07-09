@@ -40,10 +40,6 @@ std::set<std::string> splitStringWithWhite(const std::string &str);
 
 int execute_with_timeout(const std::string &cmd, unsigned long timeout);
 
-void reset_timer();
-
-unsigned long long get_timer();
-
 static inline bool isSystemHeader(const std::string &str) {
     if (str.size() < 4) return false;
     return str.substr(0,4) == "/usr";

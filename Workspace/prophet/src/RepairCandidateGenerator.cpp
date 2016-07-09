@@ -2,7 +2,6 @@
 #include "RepairCandidateGenerator.h"
 #include "LocalAnalyzer.h"
 #include "CodeRewrite.h"
-#include "llvm/Support/CommandLine.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/Stmt.h"
 #include "clang/AST/Expr.h"
@@ -14,9 +13,6 @@
 
 using namespace clang;
 
-llvm::cl::opt<bool> ReplaceExt("replace-ext", llvm::cl::init(false),
-        llvm::cl::desc("Replace extension"));
-
 #define PRIORITY_ALPHA 5000
 
 namespace {
@@ -27,112 +23,10 @@ class AtomReplaceVisitor : public RecursiveASTVisitor<AtomReplaceVisitor> {
     Stmt* start_stmt;
     std::set<clang::Stmt*> res;
     std::map<clang::Stmt*, std::pair<Expr*, Expr*> > resRExpr;
-    bool replace_ext;
-
-    ExprListTy secondOrderExprs(LocalAnalyzer *L, QualType QT) {
-        ExprListTy ret;
-        ret.clear();
-        ExprListTy vars = L->getCandidateLocalVars(clang::QualType());
-        const BinaryOperatorKind op_kind[5] = {BO_Add, BO_Sub, BO_Mul, BO_EQ, BO_NE};
-        for (size_t i = 0; i < vars.size(); i++) {
-            Expr* Ei = vars[i];
-            if (QT->isIntegerType()) {
-                for (size_t j = 0; j < vars.size(); j++) {
-                    if (i == j) continue;
-                    Expr* Ej = vars[j];
-                    if (!Ei->getType()->isIntegerType() &&
-                            !Ei->getType()->isPointerType())
-                        continue;
-                    if (Ei->getType()->isIntegerType() !=
-                            Ej->getType()->isIntegerType())
-                        continue;
-                    if (Ei->getType()->isPointerType() !=
-                            Ej->getType()->isPointerType())
-                        continue;
-                    if (Ei->getType()->isPointerType())
-                        if (!typeMatch(Ei->getType(), Ej->getType()))
-                            continue;
-                    for (size_t k = 0; k < 5; k++) {
-                        if (i > j)
-                            if (k != 2)
-                                continue;
-                        if ((k < 3) && (!Ei->getType()->isIntegerType()))
-                            continue;
-                        //FIXME: Maybe this does not type check!
-                        BinaryOperator *BO = new(*ctxt)
-                            BinaryOperator(Ei, Ej, op_kind[k], Ei->getType(),
-                            VK_RValue, OK_Ordinary, SourceLocation(), false);
-                        ret.push_back(BO);
-                    }
-                }
-                for (size_t k = 0; k < 5; k++) {
-                    BinaryOperator *BO;
-                    if ((k < 3) && (!Ei->getType()->isIntegerType()))
-                        continue;
-                    if (k == 2)
-                        BO = new(*ctxt)
-                        BinaryOperator(getNewIntegerLiteral(ctxt, 0), Ei, op_kind[k], Ei->getType(),
-                        VK_RValue, OK_Ordinary, SourceLocation(), false);
-                    else {
-                        BO = new(*ctxt)
-                        BinaryOperator(Ei, getNewIntegerLiteral(ctxt, 0), op_kind[k], Ei->getType(),
-                        VK_RValue, OK_Ordinary, SourceLocation(), false);
-                    }
-                    ret.push_back(BO);
-                }
-            }
-            if (QT->isPointerType() || QT->isArrayType()) {
-                UnaryOperator *UO = new(*ctxt) UnaryOperator(Ei,
-                    UO_AddrOf, ctxt->getPointerType(Ei->getType()),
-                    VK_RValue, OK_Ordinary, SourceLocation());
-                ret.push_back(UO);
-            }
-        }
-        return ret;
-    }
-
 public:
-    AtomReplaceVisitor(ASTContext *ctxt, LocalAnalyzer *L, clang::Stmt *start_stmt, bool replace_ext):
-    L(L), ctxt(ctxt), start_stmt(start_stmt), res(), resRExpr(), replace_ext(replace_ext) {
+    AtomReplaceVisitor(ASTContext *ctxt, LocalAnalyzer *L, clang::Stmt *start_stmt):
+    L(L), ctxt(ctxt), start_stmt(start_stmt), res(), resRExpr() {
         res.clear(); resRExpr.clear();
-    }
-
-    virtual bool VisitIntegerLiteral(IntegerLiteral *IL) {
-        if (replace_ext) {
-            ExprListTy exprs;
-            exprs.clear();
-            exprs.push_back(getNewIntegerLiteral(ctxt, 0));
-            ExprListTy tmp = secondOrderExprs(L, IL->getType());
-            exprs.insert(exprs.end(), tmp.begin(), tmp.end());
-            for (size_t i = 0; i < exprs.size(); i++) {
-                StmtReplacer R(ctxt, start_stmt);
-                Expr *newE = getParenExpr(ctxt, exprs[i]);
-                R.addRule(IL, newE);
-                Stmt* S = R.getResult();
-                res.insert(S);
-                resRExpr[S] = std::make_pair(IL, newE);
-            }
-        }
-        return true;
-    }
-
-    virtual bool VisitStringLiteral(StringLiteral *SL) {
-        if (replace_ext) {
-            ExprListTy exprs;
-            exprs.clear();
-            exprs.push_back(getNewIntegerLiteral(ctxt, 0));
-            ExprListTy tmp = secondOrderExprs(L, SL->getType());
-            exprs.insert(exprs.end(), tmp.begin(), tmp.end());
-            for (size_t i = 0; i < exprs.size(); i++) {
-                StmtReplacer R(ctxt, start_stmt);
-                Expr *newE = getParenExpr(ctxt, exprs[i]);
-                R.addRule(SL, newE);
-                Stmt* S = R.getResult();
-                res.insert(S);
-                resRExpr[S] = std::make_pair(SL, newE);
-            }
-        }
-        return true;
     }
 
     virtual bool VisitDeclRefExpr(DeclRefExpr *DRE) {
@@ -141,10 +35,6 @@ public:
         if (llvm::isa<EnumConstantDecl>(VD)) {
             EnumConstantDecl *ECD = llvm::dyn_cast<EnumConstantDecl>(VD);
             ExprListTy exprs = L->getCandidateEnumConstant(ECD);
-            if (replace_ext) {
-                ExprListTy tmp = secondOrderExprs(L, VD->getType());
-                exprs.insert(exprs.end(), tmp.begin(), tmp.end());
-            }
             for (size_t i = 0; i < exprs.size(); i ++) {
                 StmtReplacer R(ctxt, start_stmt);
                 Expr *newE = getParenExpr(ctxt, exprs[i]);
@@ -158,12 +48,8 @@ public:
         // other choice
         if (llvm::isa<VarDecl>(VD)) {
             QualType QT = DRE->getType();
-            if (QT->isPointerType() || replace_ext) {
+            if (QT->isPointerType()) {
                 ExprListTy exprs = L->getCandidateLocalVars(QT);
-                if (replace_ext) {
-                    ExprListTy tmp = secondOrderExprs(L, VD->getType());
-                    exprs.insert(exprs.end(), tmp.begin(), tmp.end());
-                }
                 if (exprs.size() != 0) {
                     for (size_t i = 0; i < exprs.size(); i++) {
                         StmtReplacer R(ctxt, start_stmt);
@@ -177,32 +63,6 @@ public:
             }
         }
         return true;
-    }
-
-    // I want to replace (- integer) as a whole
-    virtual bool TraverseUnaryMinus(UnaryOperator *UO) {
-        Expr* sub = UO->getSubExpr();
-        if (isIntegerConstant(sub)) {
-            if (replace_ext) {
-                ExprListTy exprs;
-                exprs.clear();
-                exprs.push_back(getNewIntegerLiteral(ctxt, 0));
-                ExprListTy tmp = secondOrderExprs(L, UO->getType());
-                exprs.insert(exprs.end(), tmp.begin(), tmp.end());
-                for (size_t i = 0; i < exprs.size(); i++) {
-                    StmtReplacer R(ctxt, start_stmt);
-                    Expr *newE = getParenExpr(ctxt, exprs[i]);
-                    R.addRule(UO, newE);
-                    Stmt* S = R.getResult();
-                    res.insert(S);
-                    resRExpr[S] = std::make_pair(UO, newE);
-                }
-            }
-            return true;
-        }
-        else {
-            return RecursiveASTVisitor::TraverseUnaryOperator(UO);
-        }
     }
 
     virtual bool TraverseBinAssign(BinaryOperator *n) {
@@ -585,7 +445,7 @@ class RepairCandidateGeneratorImpl : public RecursiveASTVisitor<RepairCandidateG
         // OK, we limit replacement to expr only statement to avoid stupid redundent
         // changes to an compound statement/if statement
         if (llvm::isa<Expr>(n)) {
-            AtomReplaceVisitor V(ctxt, L, n, ReplaceExt.getValue());
+            AtomReplaceVisitor V(ctxt, L, n);
             V.TraverseStmt(n);
             std::set<Stmt*> res = V.getResult();
             for (std::set<Stmt*>::iterator it = res.begin(); it != res.end(); ++it) {
@@ -659,7 +519,7 @@ class RepairCandidateGeneratorImpl : public RecursiveASTVisitor<RepairCandidateG
         std::map<std::string, RepairCandidate> tmp_map;
         tmp_map.clear();
         for (std::set<Expr*>::iterator it = exprs.begin(); it != exprs.end(); ++it) {
-            AtomReplaceVisitor V(ctxt, L, *it, false);
+            AtomReplaceVisitor V(ctxt, L, *it);
             V.TraverseStmt(*it);
             std::set<Stmt*> stmts = V.getResult();
             Expr *subExpr = NULL;

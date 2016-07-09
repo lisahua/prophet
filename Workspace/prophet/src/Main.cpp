@@ -27,7 +27,7 @@ llvm::cl::opt<std::string> LogFileName("log", llvm::cl::value_desc("log-filename
         llvm::cl::desc("Specify the logfile for this run!"));
 llvm::cl::opt<unsigned int> VerboseLevel("vl", llvm::cl::value_desc("verbose-level"), llvm::cl::init(2),
         llvm::cl::desc("How many info will output to screen 0-10(0min-10max)."));
-llvm::cl::opt<unsigned int> LogLevel("ll", llvm::cl::value_desc("log-level"), llvm::cl::init(2),
+llvm::cl::opt<unsigned int> LogLevel("ll", llvm::cl::value_desc("log-level"), llvm::cl::init(10),
         llvm::cl::desc("How many info will output to log 0-10(0min-10max)."));
 llvm::cl::opt<std::string> ConfigFilename(llvm::cl::Positional,
         llvm::cl::desc("Specify the configure filename"), llvm::cl::value_desc("conf-filename"));
@@ -68,7 +68,6 @@ llvm::cl::opt<bool> NoFeature("no-feature", llvm::cl::value_desc("just-use-local
 llvm::cl::opt<bool> Random("random", llvm::cl::init(false), llvm::cl::desc("Just use random search over the space."));
 llvm::cl::opt<double> GeoP("geop", llvm::cl::value_desc("flip probability"),
         llvm::cl::init(0.02), llvm::cl::desc("Flip Probability of Geometric Computations!"));
-llvm::cl::opt<unsigned int> Timeout("timeout", llvm::cl::init(0), llvm::cl::desc("Soft timeout limit in hours"));
 
 int main(int argc, char* argv[]) {
     llvm::cl::ParseCommandLineOptions(argc, argv);
@@ -78,7 +77,6 @@ int main(int argc, char* argv[]) {
     unsigned int verbose_level = VerboseLevel.getValue();
     unsigned int log_level = LogLevel.getValue();
     outlog_open(log_filename.c_str(), verbose_level, log_level);
-    reset_timer();
 
     std::string config_file_name = ConfigFilename.getValue();
     std::string run_work_dir = RunWorkDir.getValue();
@@ -168,8 +166,6 @@ int main(int argc, char* argv[]) {
     E.setGeoP(GeoP.getValue());
     E.setRandom(Random.getValue());
     E.setSummaryFile(SummaryFile.getValue());
-    if (Timeout.getValue() != 0)
-        E.setTimeoutLimit(((unsigned long long)Timeout.getValue()) * 60 * 60);
 
     int ret;
     bool fix_only = false;

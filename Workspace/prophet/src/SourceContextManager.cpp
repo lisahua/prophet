@@ -81,8 +81,7 @@ void SourceContextManager::fetch(const std::string &file) {
 
     if (!is_header(file)) {
         // This is the fix some strange compile complain about the memset
-        if ((code.find("ifdef") != std::string::npos) ||
-            ((code.find("memset") == std::string::npos) && (code.find("string.h") == std::string::npos)))
+        if ((code.find("memset") == std::string::npos) && (code.find("string.h") == std::string::npos))
             code = std::string(HANDLER_PREFIX) + MEMSET_PREFIX + "\n" + code;
         else
             code = std::string(HANDLER_PREFIX) + "\n" + code;
@@ -222,7 +221,7 @@ std::string SourceContextManager::cleanUpCode(const std::string &code) {
     size_t idx = code.find("\n");
     assert( idx != std::string::npos);
     ret = ret.substr(idx + 1);
-    if (ret.find("memset") != std::string::npos && ((ret.find("<string.h>") == std::string::npos) || (ret.find("ifdef") != std::string::npos)))
+    if (ret.find("memset") != std::string::npos && ret.find("<string.h>") == std::string::npos)
         ret = std::string("#include <string.h>\n") + ret;
     return ret;
 }

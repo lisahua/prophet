@@ -32,12 +32,11 @@ class RepairSearchEngine {
     // We will just nuke the search space scores and use random search if this is set
     bool random;
     std::string summaryFile;
-    unsigned long long timeout_limit;
 
 public:
     RepairSearchEngine(BenchProgram& P, ErrorLocalizer *L, bool naive, bool learning, FeatureParameter *FP)
         : P(P), negative_cases(P.getNegativeCaseSet()), positive_cases(P.getPositiveCaseSet()), naive(naive),
-        learning(learning && !naive), FP(FP), GeoP(0.08), random(false), summaryFile(""), timeout_limit(0) {
+        learning(learning && !naive), FP(FP), GeoP(0.08), random(false), summaryFile("") {
         this->L = L;
         bugged_files.clear();
         use_bugged_files = false;
@@ -62,7 +61,4 @@ public:
     }
     int run(const std::string &out_prefix, size_t try_at_least,
             bool print_fix_only, bool full_synthesis);
-    void setTimeoutLimit(unsigned long long limit) {
-        timeout_limit = limit;
-    }
 };

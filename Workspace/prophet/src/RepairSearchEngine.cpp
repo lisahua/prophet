@@ -224,8 +224,6 @@ int RepairSearchEngine::run(const std::string &out_file, size_t try_at_least,
     else {
         outlog_printf(1, "Trying different candidates!\n");
         ExprSynthesizer ES(P, M, q, naive, learning, FP);
-        if (timeout_limit != 0)
-            ES.setTimeoutLimit(timeout_limit);
         size_t cnt = 0;
         std::vector<std::pair<double, size_t> > resList;
         resList.clear();
@@ -272,12 +270,8 @@ int RepairSearchEngine::run(const std::string &out_file, size_t try_at_least,
                     fout.close();
                 }
             }
-            if (((timeout_limit > 0) && (get_timer() > timeout_limit))) {
-                outlog_printf(1, "[%llu] Timeout! The limit is %llu!\n", get_timer(), timeout_limit);
-                break;
-            }
         }
-        while (((try_at_least != 0) && (try_at_least > ES.getTestedCandidateNumber())));
+        while ((try_at_least != 0) && (try_at_least > ES.getTestedCandidateNumber()));
         outlog_printf(1, "Repair process ends successfully!\n");
         outlog_printf(1, "Total %lu different repair schemas!!!!\n", schema_cnt);
         outlog_printf(1, "Total %lu different repair candidate templates for scoring!!!\n", candidate_cnt);

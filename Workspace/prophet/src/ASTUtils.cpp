@@ -554,33 +554,6 @@ virtual bool TraverseUnary##NAME(UnaryOperator *UO) { \
 MY_UNARYOP_LIST()
 #undef OPERATOR
 
-    virtual bool TraverseCAOImpl(CompoundAssignOperator *CAO) {
-        bool _force_rebuilt = force_rebuilt;
-        force_rebuilt = false;
-        bool ret = RecursiveASTVisitor::TraverseCompoundAssignOperator(CAO);
-        Expr *LHS = CAO->getLHS();
-        Expr *RHS = CAO->getRHS();
-        if (RM[LHS] != LHS || RM[RHS] != RHS || _force_rebuilt) {
-            Expr *newE = new (*ctxt) CompoundAssignOperator(
-                llvm::dyn_cast<Expr>(RM[LHS]), llvm::dyn_cast<Expr>(RM[RHS]), CAO->getOpcode(), CAO->getType(),
-                CAO->getValueKind(), CAO->getObjectKind(), CAO->getComputationLHSType(),
-                CAO->getComputationResultType(), SourceLocation(),
-                false);
-            RM[CAO] = newE;
-        }
-        else
-            RM[CAO] = CAO;
-        return ret;
-    }
-
-#define OPERATOR(NAME) \
-    virtual bool TraverseBin##NAME##Assign(CompoundAssignOperator *CAO) { \
-        return TraverseCAOImpl(CAO); \
-    }
-
-    MY_CAO_LIST()
-#undef OPERATOR
-
     virtual bool TraverseReturnStmt(ReturnStmt *RS) {
         bool _force_rebuilt = force_rebuilt;
         force_rebuilt = false;
@@ -638,27 +611,6 @@ MY_UNARYOP_LIST()
         }
         else
             RM[ME] = ME;
-        return ret;
-    }
-
-    virtual bool TraverseConditionalOperator(ConditionalOperator *CO) {
-        bool _force_rebuilt = force_rebuilt;
-        force_rebuilt = false;
-        bool ret = RecursiveASTVisitor::TraverseConditionalOperator(CO);
-        Expr *Cond = CO->getCond();
-        Expr *LHS = CO->getLHS();
-        Expr *RHS = CO->getRHS();
-        if ((RM[LHS] != LHS) || (RM[RHS] != RHS) || (RM[Cond] != Cond) ||
-                (_force_rebuilt)) {
-            ConditionalOperator *newCO = new(*ctxt) ConditionalOperator(
-                    llvm::dyn_cast<Expr>(RM[Cond]), SourceLocation(),
-                    llvm::dyn_cast<Expr>(RM[LHS]), SourceLocation(),
-                    llvm::dyn_cast<Expr>(RM[RHS]), CO->getType(),
-                    CO->getValueKind(), CO->getObjectKind());
-            RM[CO] = newCO;
-        }
-        else
-            RM[CO] = CO;
         return ret;
     }
 

@@ -6,7 +6,6 @@
 #include <vector>
 #include <fstream>
 #include <math.h>
-#include <stdlib.h>
 
 llvm::cl::opt<std::string> ConfFile(llvm::cl::Positional, llvm::cl::desc("train_list_file"),
         llvm::cl::value_desc("The list of extracted feature vector files!"), llvm::cl::Required);
@@ -21,7 +20,6 @@ llvm::cl::opt<double> ValidationRatio("v", llvm::cl::init(0.15), llvm::cl::desc(
 llvm::cl::opt<std::string> OutFile("o", llvm::cl::init("para.out"), llvm::cl::desc("output_file"),
         llvm::cl::value_desc("The output file for the parameter!"));
 llvm::cl::opt<bool> DumpFeature("dump-feature", llvm::cl::init(false));
-llvm::cl::opt<double> HingeMargin("hmargin", llvm::cl::init(0.1), llvm::cl::desc("margin value for hingloss"));
 llvm::cl::opt<std::string> LearningAlgo("algo", llvm::cl::init("entropy"), llvm::cl::desc("entropy_or_hingeloss"));
 
 struct TrainingCase {
@@ -164,7 +162,7 @@ FeatureParameter maximumEntropyModel(const std::vector<TrainingCase> &T, const s
     return bestTheta;
 }
 
-FeatureParameter simpleSVMModel(const std::vector<TrainingCase> &T, const std::vector<TrainingCase> &V, double lambda, double lambdal1, double alpha0, double hinge_eps) {
+FeatureParameter hingeLossModel(const std::vector<TrainingCase> &T, const std::vector<TrainingCase> &V, double lambda, double lambdal1, double alpha0, double hinge_eps) {
     FeatureParameter Theta, bestTheta;
     Theta.resetZero(FeatureVector::MAX_FEATURE);
     bestTheta = Theta;
@@ -185,137 +183,9 @@ FeatureParameter simpleSVMModel(const std::vector<TrainingCase> &T, const std::v
             std::vector<double> a;
             const TrainingCase &c = T[i];
             a.resize(c.cases.size());
-            size_t tot_marked = c.marked.size();
-            size_t tot_unmarked = c.cases.size() - tot_marked;
-            double diff = 0;
-            for (size_t j = 0; j < c.cases.size(); j++) {
-                a[j] = Theta.dotProduct(c.cases[j]);
-                if (c.cases[j].getMark()) {
-                    diff += a[j] / tot_marked;
-                }
-                else {
-                    diff -= a[j] / tot_unmarked;
-                }
-            }
-            if (diff < hinge_eps) {
-                resT += diff - hinge_eps;
-                for (size_t j = 0; j < c.cases.size(); j++) {
-                    const FeatureVector &vec = c.cases[j];
-                    if (c.cases[j].getMark()) {
-                        for (size_t k = 0; k < vec.size(); k++)
-                            delta[vec[k]] += 1.0 / tot_marked;
-                    }
-                    else {
-                        for (size_t k = 0; k < vec.size(); k++)
-                            delta[vec[k]] -= 1.0 / tot_unmarked;
-                    }
-                }
-            }
-        }
-        resT /= T.size();
-        double adjustedResT = resT;
-        for (size_t i = 0; i < delta.size(); i++) {
-            delta[i] = delta[i] / T.size() - 2 * lambda * Theta[i] - lambdal1 * get_sign(Theta[i]) ;
-            adjustedResT -= lambda * Theta[i] * Theta[i] - lambdal1 * fabs(Theta[i]);
-        }
-        // update the Theta
-        for (size_t i = 0; i < delta.size(); i++)
-            Theta[i] += alpha * delta[i];
-        // validation set
-        double resV = 0;
-        for (size_t i = 0; i < V.size(); i++) {
-            std::vector<double> a;
-            const TrainingCase &c = V[i];
-            a.resize(c.cases.size());
-            for (size_t j = 0; j < c.cases.size(); j++)
-                a[j] = Theta.dotProduct(c.cases[j]);
-            size_t max_beat = 0;
-            for (size_t k = 0; k < c.marked.size(); k++) {
-                size_t beat = 0;
-                for (size_t j = 0; j < c.cases.size(); j++)
-                    if (a[j] < a[c.marked[k]] || ((a[j] == a[c.marked[k]]) && (j > c.marked[k])))
-                        beat++;
-                if (max_beat < beat)
-                    max_beat = beat;
-            }
-            resV += ((double)(max_beat) / c.cases.size()) / V.size();
-        }
-        double adjustedResV = resV;
-        llvm::outs() << "Round " << round << ": resT " << resT << " adjResT " << adjustedResT
-            << " resV " << resV << " adjResV " << adjustedResV << "\n";
-        if (resV > bestResV) {
-            bestTheta = Theta;
-            bestResV = resV;
-            last_update = round;
-            llvm::outs() << "Update best!\n";
-        }
-        else if (alpha > 0.004) {
-            if (last_update + 50 < round) {
-                alpha *= 0.9;
-                llvm::outs() << "Drop alpha to " << alpha << "\n";
-                last_update = round;
-            }
-        }
-    }
-    return bestTheta;
-}
-
-double vecDis(const FeatureVector &vec1, const FeatureVector &vec2) {
-    size_t i = 0;
-    size_t j = 0;
-    double ret = 0;
-    while ((i < vec1.size()) && (j < vec2.size())) {
-        if (vec1[i] == vec2[j]) {
-            i ++;
-            j ++;
-        }
-        else if (vec1[i] < vec2[j]) {
-            i ++;
-            ret ++;
-        }
-        else if (vec1[i] > vec2[j]) {
-            j ++;
-            ret ++;
-        }
-    }
-    if (i < vec1.size())
-        ret += vec1.size() - i;
-    if (j < vec2.size())
-        ret += vec2.size() - j;
-    return sqrt(ret);
-}
-
-FeatureParameter hingeLossModel(const std::vector<TrainingCase> &T, const std::vector<TrainingCase> &V, double lambda, double lambdal1, double alpha0, double hinge_eps) {
-    FeatureParameter Theta, bestTheta;
-    Theta.resetZero(FeatureVector::MAX_FEATURE);
-    bestTheta = Theta;
-
-    double alpha = alpha0;
-    double bestResV = -1e20;
-    unsigned int round = 0;
-    unsigned int last_update = 0;
-
-    while (last_update + 200 > round) {
-        round ++;
-        double resT = 0;
-        std::vector<double> delta;
-        delta.resize(Theta.size());
-        for (size_t i = 0; i < delta.size(); i++)
-            delta[i] = 0;
-/*        std::set<size_t> helper;
-        helper.clear();
-        for (size_t i = 0; i < T.size() / 2; i++)
-            helper.insert(rand() % T.size());
-        for (std::set<size_t>::iterator it = helper.begin(); it != helper.end(); ++it)*/
-        for (size_t i = 0; i < T.size(); i++)
-        {
-            //size_t i = *it;
-            std::vector<double> a;
-            const TrainingCase &c = T[i];
-            a.resize(c.cases.size());
             double bestMarked = -1e20;
-            size_t bestMarkedIdx = 0;
             double bestUnmarked = -1e20;
+            size_t bestMarkedIdx = 0;
             size_t bestUnmarkedIdx = 0;
             for (size_t j = 0; j < c.cases.size(); j++) {
                 a[j] = Theta.dotProduct(c.cases[j]);
@@ -325,19 +195,14 @@ FeatureParameter hingeLossModel(const std::vector<TrainingCase> &T, const std::v
                         bestMarkedIdx = j;
                     }
                 }
-            }
-            const FeatureVector &bestMarkedVec = c.cases[bestMarkedIdx];
-            for (size_t j = 0; j < c.cases.size(); j++) {
-                if (!c.cases[j].getMark()) {
-                    const FeatureVector &vec = c.cases[j];
-                    double dis = vecDis(bestMarkedVec, vec) * hinge_eps;
-                    if (a[j] + dis > bestUnmarked) {
-                        bestUnmarked = a[j] + dis;
+                else {
+                    if (bestUnmarked < a[j]) {
+                        bestUnmarked = a[j];
                         bestUnmarkedIdx = j;
                     }
                 }
             }
-            double hinge = bestMarked - bestUnmarked;
+            double hinge = bestMarked - bestUnmarked - hinge_eps;
             if (hinge < 0) {
                 resT += hinge;
                 const FeatureVector &vec = c.cases[bestMarkedIdx];
@@ -348,11 +213,9 @@ FeatureParameter hingeLossModel(const std::vector<TrainingCase> &T, const std::v
                     delta[vec1[j]] -= 1;
             }
         }
-        //resT /= helper.size();
         resT /= T.size();
         double adjustedResT = resT;
         for (size_t i = 0; i < delta.size(); i++) {
-            //delta[i] = delta[i] / helper.size() - 2 * lambda * Theta[i] * helper.size() /T.size() - lambdal1 * get_sign(Theta[i]) * helper.size() / T.size();
             delta[i] = delta[i] / T.size() - 2 * lambda * Theta[i] - lambdal1 * get_sign(Theta[i]) ;
             adjustedResT -= lambda * Theta[i] * Theta[i] - lambdal1 * fabs(Theta[i]);
         }
@@ -388,16 +251,12 @@ FeatureParameter hingeLossModel(const std::vector<TrainingCase> &T, const std::v
             llvm::outs() << "Update best!\n";
         }
         else if (alpha > 0.004) {
-            if (last_update + 100 < round) {
-                alpha *= 0.5;
-                llvm::outs() << "Drop alpha to " << alpha << "\n";
-                last_update = round;
-            }
+            alpha *= 0.9;
+            llvm::outs() << "Drop alpha to " << alpha << "\n";
         }
     }
     return bestTheta;
 }
-
 
 int main(int argc, char** argv) {
     llvm::cl::ParseCommandLineOptions(argc, argv);
@@ -442,10 +301,8 @@ int main(int argc, char** argv) {
     FeatureParameter Theta;
     if (LearningAlgo.getValue() == "entropy")
         Theta = maximumEntropyModel(T, V, Regularity, RegularityL1, LearningRate.getValue());
-    else if (LearningAlgo.getValue() == "simple")
-        Theta = simpleSVMModel(T, V, Regularity, RegularityL1, LearningRate.getValue(), HingeMargin.getValue());
-    else if (LearningAlgo.getValue() == "ssvm")
-        Theta = hingeLossModel(T, V, Regularity, RegularityL1, LearningRate.getValue(), HingeMargin.getValue());
+    else if (LearningAlgo.getValue() == "hingeloss")
+        Theta = hingeLossModel(T, V, Regularity, RegularityL1, LearningRate.getValue(), 1);
     else {
         llvm::outs() << "Unsupported algorithm! Now only entropy or hingeloss!\n";
         return 1;
