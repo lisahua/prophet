@@ -18,7 +18,7 @@ struct SourcePositionTy {
     std::string spellFilename;
     size_t spellLine;
     size_t spellColumn;
-
+size_t count;
     SourcePositionTy():
     expFilename(""), expLine(0), expColumn(0),
     spellFilename(""), spellLine(0), spellColumn(0) { }
@@ -46,9 +46,15 @@ struct SourcePositionTy {
 
     std::string toString() const {
         std::ostringstream sout;
-        sout << expFilename << " " << expLine << " " << expColumn << " "
-            << spellFilename << " " << spellLine << " " << spellColumn;
+        sout << expFilename << " " << expLine << " " << count << " ";
+        //sout << expFilename << " " << expLine << " " << expColumn << " "
+          //  << spellFilename << " " << spellLine << " " << spellColumn;
         return sout.str();
+    }
+
+    std::string getId() const {
+        std::string id= expFilename +" "+std::to_string(expLine);
+        return id;
     }
 };
 
