@@ -45,7 +45,7 @@ class ProfileErrorLocalizer : public ErrorLocalizer {
     void clearProfileResult();
 
     std::map<SourcePositionTy, ProfileInfoTy> parseProfileResult();
-    std::vector<SourcePositionTy> sliceProfileResult();
+    std::vector<SourcePositionTy> sliceProfileResult( const std::set<std::string> &bugged_files);
 
     public:
     ProfileErrorLocalizer(BenchProgram &P, const std::string &res_file);

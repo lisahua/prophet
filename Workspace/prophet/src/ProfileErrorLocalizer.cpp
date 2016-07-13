@@ -93,7 +93,7 @@ std::map<SourcePositionTy, ProfileInfoTy> ProfileErrorLocalizer::parseProfileRes
 
 
 
-std::vector<SourcePositionTy> ProfileErrorLocalizer::sliceProfileResult() {
+std::vector<SourcePositionTy> ProfileErrorLocalizer::sliceProfileResult( const std::set<std::string> &bugged_files) {
     if (LI == NULL)
         LI = new LocationIndex(INDEX_FILE);
 
@@ -130,16 +130,16 @@ std::vector<SourcePositionTy> ProfileErrorLocalizer::sliceProfileResult() {
                 tmploc.expFilename = P.normalizePath(tmploc.expFilename);
                 //llvm::errs() << "Trimed filepath: " << tmploc.expFilename << "\n";
                 std::string id = tmploc.getId();
-            bool flag = false;
+                bool flag = false;
                 for (std::vector<SourcePositionTy>::iterator it=M.begin();it < M.end();it++) {
                     if ((*it).expFilename.compare(tmploc.expFilename)==0 && (*it).expLine==tmploc.expLine) {
                         (*it).count = (*it).count +1;
                         flag = true;
+                        break;
                     }
                 }
-                if (flag==false)
-                M.push_back(tmploc);
-            }
+                if (flag==false && bugged_files.count(tmploc.expFilename) == 1)
+                    M.push_back(tmploc);
             }
         }
         fin.close();
@@ -148,12 +148,6 @@ std::vector<SourcePositionTy> ProfileErrorLocalizer::sliceProfileResult() {
 
     return M;
 }
-
-
-
-
-
-
 
 void clearTmpDirectory() {
     int ret = system("rm -rf /tmp/__* /tmp/pclang*");
@@ -186,9 +180,6 @@ ProfileErrorLocalizer::ProfileErrorLocalizer(BenchProgram &P,
         std::map<SourcePositionTy, long long> positive_mark;
         //ProfileLocationMapTy positive_mark;
         positive_mark.clear();
-        /*    ProfileLocationMapTy positive_cnt;
-              positive_cnt.clear();*/
-
         // We test with an unmodified environment
         BenchProgram::EnvMapTy testEnv;
         testEnv.clear();
@@ -196,14 +187,15 @@ ProfileErrorLocalizer::ProfileErrorLocalizer(BenchProgram &P,
         unsigned long min_id = 1000000;
         unsigned long max_id = 0;
         int negC = 0;
-        std::map<std::string,int> negLines;
+        std::vector<SourcePositionTy> negLines  ;
+        //std::map<std::string,int> negLines;
         for (TestCaseSetTy::const_iterator it = negative_cases.begin(); it != negative_cases.end(); ++it) {
             llvm::errs() << "Neg Processing: "<< *it << "\n";
             ProfileLocationMapTy res;
             clearProfileResult();
             bool tmp = P.test("profile", *it, testEnv, true);
             res = parseProfileResult();
-
+            negLines  = sliceProfileResult(bugged_files);
             if (*it < min_id) min_id = *it;
             if (*it > max_id) max_id = *it;
             assert( !tmp || 1);
@@ -213,7 +205,7 @@ ProfileErrorLocalizer::ProfileErrorLocalizer(BenchProgram &P,
             llvm::errs() << " SliceErrorLocalizer\n";
             std::ofstream negTrace;
             std::string  nName = std::to_string(++negC);
-        std::string fName = "/tmp/negTrace"+nName+".txt";
+            std::string fName = "/tmp/negTrace"+nName+".txt";
             negTrace.open(fName);
 
             //end of editing by lisa
@@ -232,23 +224,12 @@ ProfileErrorLocalizer::ProfileErrorLocalizer(BenchProgram &P,
                     negative_mark[iit->first].execution_cnt = 1;
                     negative_mark[iit->first].beforeend_cnt = iit->second.beforeend_cnt;
                     negative_mark[iit->first].pid = iit->second.pid;
-                }
+                }}
 
-                //add by Lisa
-                std::string id = iit->first.getId();
-                if (negLines.count(id))
-                    negLines[id] = negLines.find(id)->second + 1;
-                else {
-                    negLines[id] = 1;
-                }
 
-                //end by lisa
-
-            }
-
-            //add by lisa
-            for (std::map<std::string,int>::iterator lit=negLines.begin();lit != negLines.end();++lit) {
-                negTrace << lit->first <<","<< lit->second << "\n";
+            for (std::vector<SourcePositionTy>::iterator lit=negLines.begin();lit != negLines.end();++lit) {
+                //if (bugged_files.count((*lit).expFilename) == 1)
+                negTrace << (*lit).toString() << "\n";
             }
             negTrace.close();
             //end by lisa
@@ -262,12 +243,14 @@ ProfileErrorLocalizer::ProfileErrorLocalizer(BenchProgram &P,
 
         size_t cnt = 0;
         double max1 = 0;double max2=0;double max3=0;
+        int posC = 0;
         for (TestCaseSetTy::const_iterator it = begin_pos; it != end_pos; ++it) {
             llvm::errs() << "Processing: " << cnt << " : " << *it << "\n";
             ProfileLocationMapTy res;
             clearProfileResult();
             bool tmp = P.test("profile", *it, testEnv, true);
             res = parseProfileResult();
+            std::vector<SourcePositionTy> posLines = sliceProfileResult(bugged_files);
             cnt ++;
             if (!tmp) {
                 fprintf(stderr, "Profile version failed on this, maybe because of timeout due to overhead!\n");
@@ -276,57 +259,72 @@ ProfileErrorLocalizer::ProfileErrorLocalizer(BenchProgram &P,
             //add by lisa
 
             std::ofstream posTrace;
+    //        std::ofstream negDiffTrace;
+            posC++;
+         //   std::string fName = "/tmp/posTrace" + std::to_string(posC)+".txt";
+            //if (posLines.size()>0) {
             std::string fName = "/tmp/posTrace.txt";
+//      std::vectorstring fdName = "/tmp/negDiffTrace" + std::to_string(posC)+".txt";
             posTrace.open(fName);
-            std::map<std::string,int> posLines;
+            //}
+  //          negDiffTrace.open(fdName);
+            //std::map<std::string,int> posLines;
             //end of editing by lisa
 
             for (ProfileLocationMapTy::iterator iit = res.begin(); iit != res.end(); ++iit) {
                 positive_mark[iit->first]++;//+= iit->second.first;
-
-                //add by Lisa
-                std::string id = iit->first.getId();
-                if (posLines.count(id))
-                    posLines[id] = posLines.find(id)->second + 1;
-                else {
-                    posLines[id] = 1;
-                }
-
             }
 
             //add by lisa
-            int a=0;            int pSize = posLines.size();
-            for (std::map<std::string,int>::iterator lit=negLines.begin();lit != negLines.end();++lit) {
-                if (posLines.count(lit->first)==0)
-                    a++;
-                posTrace << lit->first <<","<< lit->second << "\n";
+            int a=0;           // int pSize = posLines.size();
+            for (std::vector<SourcePositionTy>::iterator pit=posLines.begin();pit != posLines.end();++pit) {
+            //    if (bugged_files.count((*pit).expFilename) == 1)
+                posTrace << (*pit).toString() << "\n";
             }
+
+
+            for (std::vector<SourcePositionTy>::iterator nit=negLines.begin();nit != negLines.end();++nit) {
+                bool flag = false;
+                for (std::vector<SourcePositionTy>::iterator pit=posLines.begin();pit != posLines.end();++pit) {
+                    if ( (*nit).getId().compare((*pit).getId())==0) {
+                        flag = true;
+                        break;
+                    }
+                }
+                if (flag==true) a++;
+                //    negDiffTrace << (*nit).toString() << "\n";
+            }
+
+
+            double rate  = (posLines.size()-a)*1.0/(posLines.size() + negLines.size()-a);
+            posTrace << std::to_string(rate);
+            posTrace << std::to_string(posC);
             posTrace.close();
-            double rate  = (pSize-a)*1.0/(negLines.size()+a);
-
+           // negDiffTrace.close();
             llvm::errs() << std::to_string(rate)+"\n";
-            int __res=0;
-            if (rate>max1) {
-                max2 = max1;
-                max1 = rate;
-                std::ifstream fin("/tmp/posTrace1.txt") ;
-                if (!fin.fail())
-                    __res = std::system("cp /tmp/posTrace1.txt  /tmp/posTrace2.txt");
-                __res =  std::system("cp /tmp/posTrace.txt  /tmp/posTrace1.txt");
-            } else if (rate >max2) {
-                max3 = max2;
-                max2 = rate;
-                std::ifstream fin("/tmp/posTrace2.txt");
-                if (!fin.fail())
-                    __res = std::system("cp /tmp/posTrace2.txt /tmp/posTrace3.txt");
-                __res = std::system("cp /tmp/posTrace.txt /tmp/posTrace2.txt");
-            } else if (rate > max3) {
-                __res  = std::system("cp /tmp/posTrace.txt   /tmp/posTrace3.txt");
-            }
-            if (__res ==1) {
+             int __res=0;
+               if (rate>max1) {
+               max2 = max1;
+               max1 = rate;
+               std::ifstream fin("/tmp/posTrace1.txt") ;
+               if (!fin.fail())
+               __res = std::system("cp /tmp/posTrace1.txt  /tmp/posTrace2.txt");
+               __res =  std::system("cp /tmp/posTrace.txt  /tmp/posTrace1.txt");
+               } else if (rate >max2) {
+               max3 = max2;
+               max2 = rate;
+               std::ifstream fin("/tmp/posTrace2.txt");
+               if (!fin.fail())
+               __res = std::system("cp /tmp/posTrace2.txt /tmp/posTrace3.txt");
+               __res = std::system("cp /tmp/posTrace.txt /tmp/posTrace2.txt");
+               } else if (rate > max3) {
+               __res  = std::system("cp /tmp/posTrace.txt   /tmp/posTrace3.txt");
+               }
+               if (__res ==1) {
 
-            llvm::errs() << "posTrace.txt  set\n";
-            }
+               llvm::errs() << "posTrace.txt  set\n";
+               }
+
             //end by lisa
 
         }
